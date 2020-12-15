@@ -2,19 +2,10 @@ let isUpdate = false;
 let empPayrollObj = {};
 
 class EmployeePayrollData {
-
+    id;
     get name() { return this._name; }
     set name(name) {
-        let nameRegex = RegExp('^[A-Z]{1}[a-zA-Z\\s]{2,}$');
-        if (nameRegex.test(name)) {
             this._name = name;
-        }
-        else throw 'Name is incorrect!';
-    }
-
-    get id() { return this._id; }
-    set id(id) {
-        this._id = id;
     }
 
     get salary() { return this._salary; }
@@ -24,12 +15,6 @@ class EmployeePayrollData {
 
     get startDate() { return this._startDate; }
     set startDate(startDate) {
-        let now = new Date();
-        if (startDate > now)
-            throw "Start Date cannot be a future date";
-        let diff = Math.abs(now.getTime() - startDate.getTime());
-        if (diff / (1000 * 60 * 60 * 24) > 30)
-            throw "Start date is beyond 30 days";
         this._startDate = startDate;
     }
 
@@ -68,7 +53,7 @@ window.addEventListener('DOMContentLoaded', () => {
             return;
         }
         try {
-            (new EmployeePayrollData()).name = name.value;
+            checkName(name.value);
             setTextValue('.text-error', '');
         } catch (e) {
             setTextValue('.text-error', e);
@@ -78,7 +63,7 @@ window.addEventListener('DOMContentLoaded', () => {
     date.addEventListener('input', function () {
         let startDate = getInputValueById('#day') + " " + getInputValueById('#month') + " " + getInputValueById('#year');
         try {
-            (new EmployeePayrollData()).startDate = new Date(Date.parse(startDate));
+            checkStartDate(new Date(Date.parse(startDate)));
             setTextValue('.date-error', '');
         } catch (e) {
             setTextValue('.date-error', e);
@@ -90,23 +75,29 @@ window.addEventListener('DOMContentLoaded', () => {
     salary.addEventListener('input', function () {
         output.textContent = salary.value;
     });
+    document.querySelector('#cancelButton').href = site_properties.home_page;
     checkForUpdate();
 });
 const save = (event) => {
     event.preventDefault();
     event.stopPropagation();
-    try {
+    try{
         setEmployeePayrollObject();
-        createAndUpdateStorage();
-        resetForm();
-        window.location.replace("../pages/homePage.html");
-    } catch (e) {
-        console.log(e);
+        if(site_properties.use_local_storage.match("true")){
+            createAndUpdateStorage();
+            resetForm();
+            window.location.replace(site_properties.home_page);
+        } else {
+            createOrUpdateEmployeePayroll();
+        }
+    }catch(e){
         return;
     }
-
 }
 const setEmployeePayrollObject = () => {
+    if (!isUpdate && site_properties.use_local_storage.match("true")) {
+        empPayrollObj.id = createNewEmployeeId();
+    }
     empPayrollObj._name = getInputValueById('#name');
     empPayrollObj._profilePic = getSelectedValues('[name = profile]').pop();
     empPayrollObj._gender = getSelectedValues('[name = gender]').pop();
@@ -116,15 +107,37 @@ const setEmployeePayrollObject = () => {
     let date = getInputValueById('#day') + " " + getInputValueById('#month') + ' ' + getInputValueById('#year');
     empPayrollObj._startDate = date;
 }
+
+const createOrUpdateEmployeePayroll = () => {
+
+    let postURL = site_properties.server_url;
+    let methodCall = "POST";
+    //Update method : UC7
+    if(isUpdate){
+        methodCall = "PUT";
+        postURL = postURL + employeePayrollObj.id.toString();
+    }
+    //Add method: UC5
+    makeServiceCall(methodCall, postURL, true, employeePayrollObj)
+        .then(responseText => {
+            resetForm();
+            window.location.replace(site_properties.home_page);
+        })
+        .catch(error => {
+            throw error;
+        })
+}
+
 const createAndUpdateStorage = () => {
     let employeePayrollList = JSON.parse(localStorage.getItem("EmployeePayrollList"));
     if (employeePayrollList) {
-        let empPayrollData = employeePayrollList.find(empData => empData._id == empPayrollObj._id)
+        let empPayrollData = employeePayrollList.find(empData => empData.id == empPayrollObj.id);
+
         if (!empPayrollData) {
-            employeePayrollList.push(createEmployeePayrollData());
+            employeePayrollList.push(empPayrollObj);
         } else {
-            const index = employeePayrollList.map(empData => empData._id).indexOf(empPayrollData._id);
-            employeePayrollList.splice(index, 1, createEmployeePayrollData(empPayrollData._id));
+            const index = employeePayrollList.map(empData => empData.id).indexOf(employeePayrollData.id);
+            employeePayrollList.splice(index, 1, empPayrollObj);
         }
     } else {
         employeePayrollList = [createEmployeePayrollData()];
